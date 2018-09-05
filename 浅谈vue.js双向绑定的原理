@@ -1,0 +1,300 @@
+
+浅谈vue.js双向绑定的原理
+一、关于数据绑定
+1、单向数据绑定
+目前前端框架大都采用MV*的模式，其中M（model）指的是模型，也就是数据；V（view）指的是视图，也就是页面展现的部分。通常，我们需要编写代码，将从服务器获取的数据进行“渲染”并展现到视图上。每当数据有变更时，我们会再次进行渲染，从而更新视图，使得视图与数据保持一致。也就是：
+
+Vue双向绑定的实现原理Object.defineproperty
+
+而另一方面，页面也会通过用户的交互，产生状态、数据的变化，这个时候，我们则编写代码，将视图对数据的更新同步到数据，以致于同步到后台服务器。也就是：
+
+Vue双向绑定的实现原理Object.defineproperty
+
+2、双向数据绑定
+Vue双向绑定的实现原理Object.defineproperty
+
+
+
+Backbonejs：Model 到 View 的数据传递，可以在 View 中监听 Model 的 change 事件，每当 Model 更新，View 中重新执行 render。而 View 到 Model 的数据传递，可以监听 View 对应的 DOM 元素的各种事件，在检测到 View 状态变更后，将变更的数据发送到 Model。
+
+AngularJS：采用“脏值检测”的方式，数据发生变更后，对于所有的数据和视图的绑定关系进行一次检测，识别是否有数据发生了改变，有变化进行处理，可能进一步引发其他数据的改变，所以这个过程可能会循环几次，一直到不再有数据变化发生后，将变更的数据发送到视图，更新页面展现。如果是手动对 ViewModel 的数据进行变更，为确保变更同步到视图，需要手动触发一次“脏值检测”。
+
+VueJS：采用 ES5 提供的 Object.defineProperty() 方法，监控对数据的操作，从而可以自动触发数据同步。并且，由于是在不同的数据上触发同步，可以精确的将变更发送给绑定的视图，而不是对所有的数据都执行一次检测。
+
+二、vue.js数据双向绑定的实现
+1、Object.defineProperty简单应用
+
+
+var obj = {};
+Object.defineProperty(obj, 'hello', {
+    get: function() {
+        console.log('get方法获取值');
+    },
+    set: function(val) {
+        console.log('set方法设置的值为：' + val);
+    }
+});
+obj.hello; // get方法获取值
+obj.hello = 'Hello World';
+实现数据和视图的联动，即实现双向绑定，听起来是不是很牛叉？并且Vue.js和Avalon.js 都是通过它实现双向绑定的。是不是有点小激动呢？所以更有必要了解一下了几行代码看它怎么用？
+
+基本用法
+var a = {};
+Object.defineProperty(a, 'b', {
+    value: 123
+});
+console.log(a.b); // 123
+很简单，它接受三个参数，而且都是必填的。
+
+参数介绍:
+
+第一个参数：目标对象
+第二个参数：需要定义的属性或方法的名字。
+第三个参数：目标属性所拥有的特性。
+前两个参数不多说了，一看代码就懂，主要看第三个参数，看看有哪些取值。
+
+value：属性的值。
+writable：如果为false，属性的值就不能被重写,只能为只读了。
+configurable：总开关，一旦为false，就不能再设置他的（value，writable，configurable）。
+enumerable：是否能在for...in循环中遍历出来或在Object.keys中列举出来。
+get：见下面例子。
+set：见下面例子。
+接下来，该是到了用实例说话的时候了。
+
+var a = {};
+Object.defineProperty(a, 'b', {
+    value: 123
+});
+console.log(a.b); // 123
+我们只设置了 value，别的并没有设置，但是 第一次的时候 可以简单的理解为（暂时这样理解）它会默认帮我们把writable、configurable、enumerable、都设上值，而且值还都是false。也就是说，上面代码和下面是等价的的（ 仅限于第一次设置的时候）：
+
+var a = {};
+Object.defineProperty(a, 'b', {
+    value: 123,
+    writable: false,
+    enumerable: false,
+    configurable: false
+});
+console.log(a.b); //123
+configurable
+总开关，第一次设置 false 之后，，第二次什么设置也不行了，比如说：
+
+var a = {};
+Object.defineProperty(a, 'b', {
+    configurable: false
+});
+Object.defineProperty(a, 'b', { // Uncaught TypeError: Cannot redefine property: b(…)
+    configurable: true
+});
+如果第一次不设置，第二次再设置同样会报错。
+
+writable
+如果设置为fasle，就变成只读了。。
+
+var a = {};
+Object.defineProperty(a, 'b', {
+    value: 123,
+    writable: false
+});
+console.log(a.b); // 打印 123
+a.b = 124; // 没有错误抛出（在严格模式下会抛出，即使之前已经有相同的值）
+console.log(a.b); // 打印 123， 赋值不起作用。
+enumerable
+属性特性 enumerable 定义了对象的属性是否可以在 for...in 循环和 Object.keys() 中被枚举。
+
+var a = {};
+Object.defineProperty(a, "b", {
+    value: 3445,
+    enumerable: true
+});
+console.log(Object.keys(a)); // 打印["b"]
+改为false
+
+var a = {};
+Object.defineProperty(a, "b", {
+    value: 3445,
+    enumerable: false //注意咯这里改了
+});
+console.log(Object.keys(a)); // 打印[]
+for...in 类似，不赘述了。
+
+set 和 get
+在参数中不能 同时 设置访问器 (get 和 set) 和 wriable 或 value，否则会错，就是说想用(get 和 set)，就不能用（wriable 或 value中的任何一个）
+
+set 和 get ，他俩干啥用的的？
+
+var a = {};
+Object.defineProperty(a, 'b', {
+    set: function(newValue) {
+        console.log('你要赋值给我，我的新值是：'+ newValue);
+    },
+    get: function() {
+        console.log("你取我的值");
+        return 2; //注意这里，我硬编码返回2
+    }
+});
+a.b = 1; //打印 你要赋值给我,我的新值是1
+console.log(a.b); //打印 你取我的值 2
+简单来说，这个 b 赋值或者取值的时候会分别触发 set 和 get 对应的函数。
+
+现在开始使用Object.defineProperty实现数据和视图的联动。
+
+<!-- HTML -->
+<div> 
+    你好，<span id='nickName'></span>
+    <div id="introduce"></div>
+</div>
+
+// JavaScript
+// 视图控制器
+var userInfo = {};
+Object.defineProperty(userInfo, "nickName", {
+    get: function() {
+        return document.getElementById('nickName').innerHTML;
+    },
+    set: function(nick) {
+        document.getElementById('nickName').innerHTML = nick;
+    }
+});
+Object.defineProperty(userInfo, "introduce", {
+    get: function() {
+        return document.getElementById('introduce').innerHTML;
+    },
+    set: function(introduce) {
+        document.getElementById('introduce').innerHTML = introduce;
+    }
+});
+userInfo.nickName = "xxx";
+userInfo.introduce = "我是xxx，我来自云南，..."
+设置userInfo的nickName属性时会调用set方法，更新DOM节点的HTML。
+
+关于 Object.defineProperty() 小结
+首先我们得先知道,ECMAScript中有两种属性:数据属性和访问器属性。
+
+数据属性
+[[Configurable]]:表示能否修改属性。默认值为true
+[[Enumerable]]:表示属性是否可枚举,也就是是否可以通过for-in循环返回属性。默认值为true
+[[Writable]]:表示能否修改属性的值。默认值为true
+[[value]]:包含这个属性的值.读取属性的时候就是通过这里开始读。默认值为undefined
+接下来我们看看例子
+
+var person = {
+
+}
+我们要是想修改默认属性的值该怎么做呢?这时候就要用到标题上所说的方法了Object.defineProperty(obj,prop,descriptor):
+
+obj:需要定义的属性的对象
+prop:需要定义(创建)或修改的属性的名字
+descriptor:需要定义或修改的属性的描述符,可以是一个对象
+具体内容可以参考MDN。
+
+var person = {
+
+}
+// 这里我们把这些数据属性显示的写了出来
+Object.defineProperty(person,'a',{
+    configurable:true, //可以修改默认属性
+    enumerable:true,   //可以被枚举
+    writable:true,     //可以修改这个属性的值
+    value:1            //定义一个初始的值为1
+})
+console.log(person)    //Object {a: 1}
+person.a=2
+console.log(person)    //Object {a: 2}
+for(var k in person){
+    console.log(k)     //a,可以被枚举
+}
+现在我们来修改一下默认的值
+
+Object.defineProperty(person,'a',{
+    configurable:true,
+    enumerable:false,
+    writable:false,
+    value:1
+})
+console.log(person)  //Object {a: 1}
+person.a=2
+console.log(person)  //Object {a: 1} 因为writable值被设置为false了,所以不可以写,严格模式下会报错
+for(var k in person){
+    console.log(k)   //不起作用,因为enumerable的值被设置为false了
+}
+我们试试吧configurable的值改为false
+
+Object.defineProperty(person,'a',{
+    configurable:false,    //为false的时候不允许修改默认属性了
+})
+// ===============================
+// 改为false之后再试试修改其他属性
+Object.defineProperty(person,'a',{
+    configurable:true,
+    enumerable:true,
+    writable:true,
+    value:1
+})
+//woa,控制台直接报错了!连想把false值改回true都不行!也就是说,这个改动是一次性了!
+//也就是说,你可以使用Object.defineProperty()方法无限修改同一个属性,但是当把configurable改为false之后就有限制了
+接下来我们看看访问器属性。
+
+访问器属性
+[[Configurable]]：表示能否修改属性。默认值为true
+[[Enumerable]]：表示属性是否可枚举,也就是是否可以通过for-in循环返回属性。默认值为true
+[[Get]]：在读取属性时调用的函数,默认值为undefined
+[[Set]]：在设置属性的时候调用的函数,默认值为undefined
+访问器属性不能直接定义!只能通过Object.defineProperty()来定义。我们看看例子
+
+var person = {
+    a:1
+}
+Object.defineProperty(person,'a',{
+    get(){
+        return 3          //当访问这个属性的时候返回3
+    },
+    set(val){
+        console.log(val)  //当设置这个属性的时候执行,val是设置的值
+    }
+})
+
+person.a                  // 3,我们明明写的是a:1,怎么返回的3呢?这就是get()的威力了
+person.a = 5              // 5,相应的设置的时候执行了set()函数
+我们来模拟一个访问和设置的默认行为
+
+var person = {
+    a:1
+}
+// 注:里面的this指向ogj(person)
+Object.defineProperty(person,'a',{
+    get(){
+        return this.a 
+    },
+    set(val){
+        this.a = val 
+    }
+})
+//我们想当然的这么写.
+person.a       //Uncaught RangeError: Maximum call stack size exceeded
+// 什么,溢出了?这是为什么?
+// 哦~原来是这么写的话会造成循环引用,狂call不止
+// 我们看下流程:
+// person.a → get.call(person) → this.a → person.a → get.call(person) → this.a......
+我们得改一下
+
+var person = {
+    a:1
+}
+Object.defineProperty(person,'a',{
+    get(){
+        return this._a || 1 //定义一个新的属性和一个默认值
+    },
+    set(val){
+        this._a = val 
+    }
+})
+person.a    // 1
+person.a=2  // 2
+person.a    // 2
+这样就好了。
+
+小结
+当把configurable值设置为false后,就不能修改任何属性了,包括自己本身这个属性
+想用访问器属性模拟默认行为的话,必须得在里面新顶一个属性,不然的话会造成循环引用
+这对我们了解对象的工作机制很有作用,虽然可能很少会用到
